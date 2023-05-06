@@ -14,20 +14,26 @@ type Event struct {
 
 var control chan chan *Event
 
-func forwardOutput(r io.Reader, ch chan *Event) {
-    buffer := make([]byte, 100);
-    for {
-        n, err := r.Read(buffer)
-        if n > 0 {
-            data := make([]byte, n)
-            copy(data, buffer[:n])
-            ch <- &Event{data: data}
-        }
+func forwardOutput(r io.Reader, ch chan *Event) chan bool {
+    var done = make(chan bool)
+    go func() {
+        buffer := make([]byte, 100);
+        for {
+            n, err := r.Read(buffer)
+            if n > 0 {
+                data := make([]byte, n)
+                copy(data, buffer[:n])
+                ch <- &Event{data: data}
+            }
 
-        if err == io.EOF {
-            return
+            if err != nil {
+                done <- true
+                return
+            }
         }
-    }
+    }()
+
+    return done
 }
 
 func deploy() chan *Event {
@@ -49,8 +55,8 @@ func deploy() chan *Event {
             fmt.Println("problem")
         }
 
-        go forwardOutput(stdout, ch)
-        go forwardOutput(stderr, ch)
+        <- forwardOutput(stdout, ch)
+        <- forwardOutput(stderr, ch)
 
         cmd.Wait()
         ch <- &Event{data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", cmd.ProcessState.ExitCode()))}
