@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"io"
 	"net/http"
@@ -129,6 +130,10 @@ func extractBearerToken(r *http.Request) string {
 	return authHeaderParts[1]
 }
 
+func isValidToken(suppliedToken string, correctToken string) bool {
+	return subtle.ConstantTimeCompare([]byte(suppliedToken), []byte(correctToken)) == 1
+}
+
 func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Handling ", r.URL.Path)
@@ -139,7 +144,7 @@ func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		if extractBearerToken(r) != service.token {
+		if !isValidToken(extractBearerToken(r), service.token) {
 			// Return 404 instead of 403 to reduce exposure
 			http.NotFound(w, r)
 			return
