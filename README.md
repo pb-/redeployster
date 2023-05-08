@@ -21,6 +21,7 @@ Useful commands:
 
 - Build the binary: `go build -o redeployster main.go`
 - Build & run from source: `go run main.go`
+- Format the code: `go fmt main.go`
 
 ## TODO
 
