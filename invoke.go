@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 )
 
 func runCmd(prg string, cmdargs []string, ch chan *Event) int {
@@ -49,4 +50,35 @@ func forwardOutput(r io.Reader, ch chan *Event) chan bool {
 	}()
 
 	return done
+}
+
+func listContainers() (string, error) {
+	var out strings.Builder
+
+	cmd := exec.Command(
+		"docker",
+		"container",
+		"ls",
+		"-a",
+		"--filter",
+		"label=redeployster.token",
+		"--filter",
+		"label=com.docker.compose.service",
+		"--filter",
+		"label=com.docker.compose.oneoff=False",
+		"--format",
+		strings.Join([]string{
+			"{{ .Label \"com.docker.compose.service\" }}",
+			"{{ .Label \"com.docker.compose.project.config_files\" }}",
+			"{{ .Label \"redeployster.token\" }}",
+		}, "\t"),
+	)
+
+	cmd.Stdout = &out
+
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
 }
