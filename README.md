@@ -19,9 +19,9 @@ Requirements: [go](https://golang.org)
 
 Useful commands:
 
-- Build the binary: `go build -o redeployster main.go`
-- Build & run from source: `go run main.go`
-- Format the code: `go fmt main.go`
+- Build the binary: `go build .`
+- Build & run from source: `go run .`
+- Format the code: `go fmt .`
 
 ## TODO
 
