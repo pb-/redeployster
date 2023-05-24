@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -124,22 +125,43 @@ func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func main() {
-	state := State{}
-	state["service1"] = Service{
-		bus:   make(chan chan *Event),
-		token: "dolphin",
-	}
-	state["service2"] = Service{
-		bus:   make(chan chan *Event),
-		token: "beaver",
+func loadState() (*State, error) {
+	output, err := listContainers()
+	if err != nil {
+		return nil, err
 	}
 
-	for name, service := range state {
+	state := State{}
+
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			continue
+		}
+
+		state[fields[0]] = Service{
+			bus:         make(chan chan *Event),
+			composeFile: fields[1],
+			token:       fields[2],
+		}
+	}
+
+	return &state, nil
+}
+
+func main() {
+	state, err := loadState()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%e", err)
+		os.Exit(1)
+	}
+
+	for name, service := range *state {
 		manageService(name, service.bus)
 	}
 
-	http.HandleFunc("/", makeHandler(state))
+	http.HandleFunc("/", makeHandler(*state))
 
 	fmt.Println("Listening on http://0.0.0.0:4711")
 	http.ListenAndServe(":4711", nil)
