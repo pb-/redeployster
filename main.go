@@ -21,22 +21,24 @@ type Service struct {
 
 type State map[string]Service
 
-func deploy(name string) chan *Event {
+func deploy(name string, composeFile string) chan *Event {
 	var ch = make(chan *Event)
 
 	go func() {
+		defer close(ch)
+
 		exitCode := runCmd(
-			"bash",
-			[]string{"-c", fmt.Sprintf("echo deploying %s...  && sleep 2s && ls ~", name)},
+			"docker-compose",
+			[]string{"-f", composeFile, "up", "--pull", "always", "-d", name},
 			ch,
 		)
+
 		ch <- &Event{data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode))}
-		close(ch)
 	}()
 	return ch
 }
 
-func manageService(name string, bus Bus) {
+func manageService(name string, composeFile string, bus Bus) {
 	go func() {
 		var inProgress = false
 		var deploymentEvents chan *Event
@@ -53,7 +55,7 @@ func manageService(name string, bus Bus) {
 				} else {
 					currentDeployListeners = append(currentDeployListeners, client)
 					inProgress = true
-					deploymentEvents = deploy(name)
+					deploymentEvents = deploy(name, composeFile)
 				}
 			case e, ok := <-deploymentEvents:
 				if ok {
@@ -71,7 +73,7 @@ func manageService(name string, bus Bus) {
 					if nextDeployListeners != nil {
 						currentDeployListeners = nextDeployListeners
 						nextDeployListeners = nil
-						deploymentEvents = deploy(name)
+						deploymentEvents = deploy(name, composeFile)
 					} else {
 						currentDeployListeners = nil
 						inProgress = false
@@ -158,7 +160,8 @@ func main() {
 	}
 
 	for name, service := range *state {
-		manageService(name, service.bus)
+		manageService(name, service.composeFile, service.bus)
+		fmt.Printf("Service %s discovered\n", name)
 	}
 
 	http.HandleFunc("/", makeHandler(*state))
