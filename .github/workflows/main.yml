@@ -10,7 +10,7 @@ jobs:
         with:
           go-version: '1.15'
       - name: Build
-        run: go build -o redeployster main.go
+        run: go build -o redeployster .
       - name: Format Check
         run: |
           if [ -n "$(gofmt -l .)" ]; then

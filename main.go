@@ -3,9 +3,7 @@ package main
 import (
 	"crypto/subtle"
 	"fmt"
-	"io"
 	"net/http"
-	"os/exec"
 	"strings"
 )
 
@@ -15,61 +13,25 @@ type Event struct {
 
 type Bus chan chan *Event
 type Service struct {
-	bus   Bus
-	token string
+	bus         Bus
+	composeFile string
+	token       string
 }
 
 type State map[string]Service
-
-func forwardOutput(r io.Reader, ch chan *Event) chan bool {
-	var done = make(chan bool)
-	go func() {
-		buffer := make([]byte, 100)
-		for {
-			n, err := r.Read(buffer)
-			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buffer[:n])
-				ch <- &Event{data: data}
-			}
-
-			if err != nil {
-				done <- true
-				return
-			}
-		}
-	}()
-
-	return done
-}
 
 func deploy(name string) chan *Event {
 	var ch = make(chan *Event)
 
 	go func() {
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("echo deploying %s...  && sleep 2s && ls ~", name))
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			fmt.Println("problem")
-		}
-
-		stderr, err := cmd.StderrPipe()
-		if err != nil {
-			fmt.Println("problem")
-		}
-
-		if err := cmd.Start(); err != nil {
-			fmt.Println("problem")
-		}
-
-		<-forwardOutput(stdout, ch)
-		<-forwardOutput(stderr, ch)
-
-		cmd.Wait()
-		ch <- &Event{data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", cmd.ProcessState.ExitCode()))}
+		exitCode := runCmd(
+			"bash",
+			[]string{"-c", fmt.Sprintf("echo deploying %s...  && sleep 2s && ls ~", name)},
+			ch,
+		)
+		ch <- &Event{data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode))}
 		close(ch)
 	}()
-
 	return ch
 }
 
