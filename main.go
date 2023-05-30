@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/subtle"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -101,7 +102,7 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 
 func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Handling ", r.URL.Path)
+		log.Println("Handling", r.URL.Path)
 		service, ok := state[strings.TrimLeft(r.URL.Path, "/")]
 
 		if !ok {
@@ -166,6 +167,7 @@ func main() {
 
 	http.HandleFunc("/", makeHandler(*state))
 
-	fmt.Println("Listening on http://0.0.0.0:4711")
-	http.ListenAndServe(":4711", nil)
+	port := 4711
+	log.Printf("Trying to listen on http://0.0.0.0:%d\n", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
 }

@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"strings"
 )
@@ -11,16 +11,16 @@ func runCmd(prg string, cmdargs []string, ch chan *Event) int {
 	cmd := exec.Command(prg, cmdargs...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		fmt.Println("problem")
+		log.Fatal(err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		fmt.Println("problem")
+		log.Fatal(err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		fmt.Println("problem")
+		log.Fatal(err)
 	}
 
 	<-forwardOutput(stdout, ch)
