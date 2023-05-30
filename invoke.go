@@ -59,7 +59,7 @@ func listContainers() (string, error) {
 		"docker",
 		"container",
 		"ls",
-		"-a",
+		"--all",
 		"--filter",
 		"label=redeployster.token",
 		"--filter",
