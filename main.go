@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 type Event struct {
@@ -15,13 +16,18 @@ type Event struct {
 }
 
 type Bus chan chan *Event
+
 type Service struct {
 	bus         Bus
 	composeFile string
 	token       string
 }
 
-type State map[string]Service
+type State struct {
+	services            map[string]Service
+	missedHitsRemaining int
+	missedHitsReset     time.Time
+}
 
 func deploy(name string, composeFile string) chan *Event {
 	var ch = make(chan *Event)
@@ -106,16 +112,26 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 
 func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		now := time.Now()
 		log.Println("Handling", r.URL.Path)
 
 		name := strings.TrimLeft(r.URL.Path, "/")
 
-		service, ok := (*s)[name]
+		service, ok := s.services[name]
 		if !ok {
-			// Reload the state in case the service was recently added
-			loadState(s)
-			service, ok = (*s)[name]
+			if s.missedHitsReset.Before(now) {
+				s.missedHitsReset = now.Add(time.Minute * 10)
+				s.missedHitsRemaining = 10
+			}
+
+			if s.missedHitsRemaining > 0 {
+				// Reload the state in case the service was recently added
+				loadState(s)
+				service, ok = s.services[name]
+			}
+
 			if !ok {
+				s.missedHitsRemaining--
 				http.NotFound(w, r)
 				return
 			}
@@ -129,7 +145,7 @@ func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 
 		// Reload the state in case the service was recently removed
 		loadState(s)
-		if _, ok = (*s)[name]; !ok {
+		if _, ok = s.services[name]; !ok {
 			w.WriteHeader(http.StatusGone)
 			fmt.Fprintf(w, http.StatusText(http.StatusGone))
 			return
@@ -170,7 +186,7 @@ func loadState(s *State) error {
 
 		name := fields[0]
 
-		if service, ok := (*s)[name]; ok {
+		if service, ok := s.services[name]; ok {
 			serviceSet[name] = true
 			service.composeFile = fields[1]
 			service.token = fields[2]
@@ -182,16 +198,16 @@ func loadState(s *State) error {
 				token:       fields[2],
 			}
 
-			(*s)[name] = service
+			s.services[name] = service
 			manageService(name, service.composeFile, service.bus)
 			fmt.Printf("Service %s configured\n", name)
 		}
 	}
 
-	for name, service := range *s {
+	for name, service := range s.services {
 		if _, ok := serviceSet[name]; !ok {
 			close(service.bus)
-			delete(*s, name)
+			delete(s.services, name)
 			fmt.Printf("Service %s unmounted\n", name)
 		}
 	}
@@ -200,7 +216,12 @@ func loadState(s *State) error {
 }
 
 func main() {
-	state := State{}
+	state := State{
+		services:            map[string]Service{},
+		missedHitsRemaining: 0,
+		missedHitsReset:     time.Unix(0, 0),
+	}
+
 	if err := loadState(&state); err != nil {
 		fmt.Fprintf(os.Stderr, "%e", err)
 		os.Exit(1)
