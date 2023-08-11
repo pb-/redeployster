@@ -37,10 +37,7 @@ The deployable service is now configured:
 go run .
 
 # In another shell:
-curl -i \
-  -XPOST \
-  -H'Authorization: Bearer dolphin' \
-  http://localhost:4711/hello
+curl -i -XPOST -H'Authorization: Bearer dolphin' http://localhost:4711/hello
 ```
 
 ## Development

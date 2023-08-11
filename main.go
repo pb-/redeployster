@@ -100,19 +100,34 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 	return subtle.ConstantTimeCompare([]byte(suppliedToken), []byte(correctToken)) == 1
 }
 
-func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
+func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Handling", r.URL.Path)
-		service, ok := state[strings.TrimLeft(r.URL.Path, "/")]
 
+		name := strings.TrimLeft(r.URL.Path, "/")
+
+		service, ok := (*s)[name]
 		if !ok {
-			http.NotFound(w, r)
-			return
+			// Reload the state in case the service was recently added
+			loadState(s)
+			service, ok = (*s)[name]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
 		}
 
 		if !isValidToken(extractBearerToken(r), service.token) {
 			// Return 404 instead of 403 to reduce exposure
 			http.NotFound(w, r)
+			return
+		}
+
+		// Reload the state in case the service was recently removed
+		loadState(s)
+		if _, ok = (*s)[name]; !ok {
+			w.WriteHeader(http.StatusGone)
+			fmt.Fprintf(w, http.StatusText(http.StatusGone))
 			return
 		}
 
@@ -128,44 +143,60 @@ func makeHandler(state State) func(http.ResponseWriter, *http.Request) {
 	}
 }
 
-func loadState() (*State, error) {
+func loadState(s *State) error {
 	output, err := listContainers()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	state := State{}
-
+	serviceSet := map[string]bool{}
 	lines := strings.Split(output, "\n")
+
 	for _, line := range lines {
 		fields := strings.Fields(line)
 		if len(fields) != 3 {
 			continue
 		}
 
-		state[fields[0]] = Service{
-			bus:         make(chan chan *Event),
-			composeFile: fields[1],
-			token:       fields[2],
+		name := fields[0]
+
+		if service, ok := (*s)[name]; ok {
+			serviceSet[name] = true
+			service.composeFile = fields[1]
+			service.token = fields[2]
+		} else {
+			serviceSet[name] = true
+			service := Service{
+				bus:         make(chan chan *Event),
+				composeFile: fields[1],
+				token:       fields[2],
+			}
+
+			(*s)[name] = service
+			manageService(name, service.composeFile, service.bus)
+			fmt.Printf("Service %s configured\n", name)
 		}
 	}
 
-	return &state, nil
+	for name, service := range *s {
+		if _, ok := serviceSet[name]; !ok {
+			close(service.bus)
+			delete(*s, name)
+			fmt.Printf("Service %s unmounted\n", name)
+		}
+	}
+
+	return nil
 }
 
 func main() {
-	state, err := loadState()
-	if err != nil {
+	state := State{}
+	if err := loadState(&state); err != nil {
 		fmt.Fprintf(os.Stderr, "%e", err)
 		os.Exit(1)
 	}
 
-	for name, service := range *state {
-		manageService(name, service.composeFile, service.bus)
-		fmt.Printf("Service %s discovered\n", name)
-	}
-
-	http.HandleFunc("/", makeHandler(*state))
+	http.HandleFunc("/", makeHandler(&state))
 
 	port := 4711
 	log.Printf("Trying to listen on http://0.0.0.0:%d\n", port)
