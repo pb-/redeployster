@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// HttpPort is the port on which redeployster listens
+const HttpPort = 4711
+
+// DockerProbeMaxRate is the maximum average number of Docker state checks in calls/minute
+const DockerProbeMaxRate = 1.0
+
+// DockerProbeBurstSize is the maximum number of Docker calls allowed within the period defined by DockerProbeMaxRate
+const DockerProbeBurstSize = 5
+
 type Event struct {
 	data     []byte
 	exitCode *int
@@ -24,9 +33,9 @@ type Service struct {
 }
 
 type State struct {
-	services            map[string]Service
-	missedHitsRemaining int
-	missedHitsReset     time.Time
+	services                map[string]Service
+	missedHitsTokens        int
+	missedHitsLastReplenish time.Time
 }
 
 func deploy(name string, composeFile string) chan *Event {
@@ -110,6 +119,19 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 	return subtle.ConstantTimeCompare([]byte(suppliedToken), []byte(correctToken)) == 1
 }
 
+func refreshMissedHitsTokens(s *State, now time.Time) {
+	ellapsedMinutes := now.Sub(s.missedHitsLastReplenish).Minutes()
+
+	s.missedHitsTokens += int(ellapsedMinutes*DockerProbeMaxRate) - 1
+	if s.missedHitsTokens > DockerProbeBurstSize {
+		s.missedHitsTokens = DockerProbeBurstSize
+	} else if s.missedHitsTokens < 0 {
+		s.missedHitsTokens = 0
+	}
+
+	s.missedHitsLastReplenish = now
+}
+
 func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		now := time.Now()
@@ -119,19 +141,14 @@ func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 
 		service, ok := s.services[name]
 		if !ok {
-			if s.missedHitsReset.Before(now) {
-				s.missedHitsReset = now.Add(time.Minute * 10)
-				s.missedHitsRemaining = 10
-			}
-
-			if s.missedHitsRemaining > 0 {
+			refreshMissedHitsTokens(s, now)
+			if s.missedHitsTokens > 0 {
 				// Reload the state in case the service was recently added
 				loadState(s)
 				service, ok = s.services[name]
 			}
 
 			if !ok {
-				s.missedHitsRemaining--
 				http.NotFound(w, r)
 				return
 			}
@@ -217,9 +234,9 @@ func loadState(s *State) error {
 
 func main() {
 	state := State{
-		services:            map[string]Service{},
-		missedHitsRemaining: 0,
-		missedHitsReset:     time.Unix(0, 0),
+		services:                map[string]Service{},
+		missedHitsTokens:        0,
+		missedHitsLastReplenish: time.Unix(0, 0),
 	}
 
 	if err := loadState(&state); err != nil {
@@ -229,7 +246,6 @@ func main() {
 
 	http.HandleFunc("/", makeHandler(&state))
 
-	port := 4711
-	log.Printf("Trying to listen on http://0.0.0.0:%d\n", port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	log.Printf("Trying to listen on http://0.0.0.0:%d\n", HttpPort)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", HttpPort), nil))
 }
