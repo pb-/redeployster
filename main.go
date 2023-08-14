@@ -11,6 +11,7 @@ import (
 
 type Event struct {
 	data []byte
+	exitCode *int
 }
 
 type Bus chan chan *Event
@@ -34,7 +35,10 @@ func deploy(name string, composeFile string) chan *Event {
 			ch,
 		)
 
-		ch <- &Event{data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode))}
+		ch <- &Event{
+			data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode)),
+			exitCode: &exitCode,
+		}
 	}()
 	return ch
 }
@@ -131,6 +135,8 @@ func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
+		w.Header().Add("Trailer", "Exit-Code")
+
 		ch := make(chan *Event)
 		service.bus <- ch
 
@@ -138,6 +144,10 @@ func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 			w.Write(e.data)
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
+			}
+
+			if e.exitCode != nil {
+				w.Header().Set("Exit-Code", fmt.Sprintf("%d", *e.exitCode))
 			}
 		}
 	}

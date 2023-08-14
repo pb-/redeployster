@@ -40,6 +40,19 @@ go run .
 curl -i -XPOST -H'Authorization: Bearer dolphin' http://localhost:4711/hello
 ```
 
+## FAQ
+
+### How to detect deploy failures from the http client?
+
+Redeployster replies with HTTP Status 200 as soon as a deploy job starts because it then streams the deploy output. To access the exit code of a job, you can read the `Exit-Code` HTTP trailer.
+
+Here is an example with _curl_ that saves the headers in a separate file and then uses _grep_ to exit with a non-zero code if the deployment fails:
+
+```shell
+curl -XPOST -H'Authorization: Bearer dolphin' http://localhost:4711/hello -D headers.txt
+grep -q '^Exit-Code: 0\b' headers.txt
+```
+
 ## Development
 
 Requirements: [go](https://golang.org)
@@ -49,9 +62,3 @@ Useful commands:
 - Build the binary: `go build .`
 - Build & run from source: `go run .`
 - Format the code: `go fmt .`
-
-## TODO
-
- * Respond with 500 when deployment exit code is not zero
-   * Not possible, headers already sent!
-   * HTTP trailer?
