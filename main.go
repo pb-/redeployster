@@ -120,9 +120,9 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 }
 
 func refreshMissedHitsTokens(s *State, now time.Time) {
-	ellapsedMinutes := now.Sub(s.missedHitsLastReplenish).Minutes()
+	elapsedMinutes := now.Sub(s.missedHitsLastReplenish).Minutes()
 
-	s.missedHitsTokens += int(ellapsedMinutes*DockerProbeMaxRate) - 1
+	s.missedHitsTokens += int(elapsedMinutes*DockerProbeMaxRate) - 1
 	if s.missedHitsTokens > DockerProbeBurstSize {
 		s.missedHitsTokens = DockerProbeBurstSize
 	} else if s.missedHitsTokens < 0 {
