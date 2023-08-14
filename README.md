@@ -53,6 +53,35 @@ curl -XPOST -H'Authorization: Bearer dolphin' http://localhost:4711/hello -D hea
 grep -q '^Exit-Code: 0\b' headers.txt
 ```
 
+### How to expose redeployster to the Internet under HTTPS?
+
+Redeployster currently doesn't have options to provide a certificate in order to listen directly on port 443.
+
+It is meant to run on the same host as the services it needs to deploy. These Docker-managed services are most likely exposed to the HTTPS port via a reverse proxy like [Nginx](https://nginx.org), [Traefik](https://traefik.io/), [Caddy](https://caddyserver.com/) etc.
+
+One typical scenario is to add a _forwarder_ service under the reverse-proxy. The _forwarder_ will then proxy requests to redeployster running directly on the host. See this example using Caddy as the forwarder, and assuming Traefik as the main reverse-proxy.
+
+```yml
+# docker-compose.yml
+services:
+  forwarder:
+    image: caddy:2.6.4-alpine
+    command: 'caddy reverse-proxy --from :3000 --to host.docker.internal:4711'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.forwarder.rule=Host(`deploy.example.com`)"
+      - "traefik.http.services.forwarder.loadbalancer.server.port=3000"
+      - "traefik.http.routers.forwarder.tls.certresolver=default"
+```
+
+Note: If you have a firewall, you might need to allow Docker's network interface to access the Redeployster's port (4711)
+
+### Why not run redeployster within Docker?
+
+We could also run it within a Docker container and let it handle the other containers by mounting the Docker socket. But redeployster actually needs to call _docker-compose_, and for this it needs access to the _docker-compose.yml_ file from the host.
+
 ## Development
 
 Requirements: [go](https://golang.org)

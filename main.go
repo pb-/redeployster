@@ -10,7 +10,7 @@ import (
 )
 
 type Event struct {
-	data []byte
+	data     []byte
 	exitCode *int
 }
 
@@ -36,7 +36,7 @@ func deploy(name string, composeFile string) chan *Event {
 		)
 
 		ch <- &Event{
-			data: []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode)),
+			data:     []byte(fmt.Sprintf("*** Deployment command finished with exit code %d\n", exitCode)),
 			exitCode: &exitCode,
 		}
 	}()
