@@ -121,16 +121,17 @@ func isValidToken(suppliedToken string, correctToken string) bool {
 
 func refreshMissedHitsTokens(s *State, now time.Time) {
 	elapsedMinutes := now.Sub(s.missedHitsLastReplenish).Minutes()
+	newTokens := int(elapsedMinutes * DockerProbeMaxRate)
 
-	s.missedHitsTokens += int(elapsedMinutes*DockerProbeMaxRate) - 1
+	s.missedHitsTokens += newTokens
+
 	if s.missedHitsTokens > DockerProbeBurstSize {
 		s.missedHitsTokens = DockerProbeBurstSize
-	} else if s.missedHitsTokens < 0 {
-		s.missedHitsTokens = 0
-		return
 	}
 
-	s.missedHitsLastReplenish = now
+	if newTokens > 0 {
+		s.missedHitsLastReplenish = now
+	}
 }
 
 func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
@@ -144,6 +145,8 @@ func makeHandler(s *State) func(http.ResponseWriter, *http.Request) {
 		if !ok {
 			refreshMissedHitsTokens(s, now)
 			if s.missedHitsTokens > 0 {
+				s.missedHitsTokens--
+
 				// Reload the state in case the service was recently added
 				loadState(s)
 				service, ok = s.services[name]
