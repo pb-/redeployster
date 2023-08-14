@@ -127,6 +127,7 @@ func refreshMissedHitsTokens(s *State, now time.Time) {
 		s.missedHitsTokens = DockerProbeBurstSize
 	} else if s.missedHitsTokens < 0 {
 		s.missedHitsTokens = 0
+		return
 	}
 
 	s.missedHitsLastReplenish = now
