@@ -46,7 +46,7 @@ func deploy(name string, composeFile string) chan *Event {
 
 		exitCode := runCmd(
 			"docker-compose",
-			[]string{"-f", composeFile, "up", "--pull", "always", "-d", name},
+			[]string{"-f", composeFile, "up", "--pull", "always", "--quiet-pull", "-d", name},
 			ch,
 		)
 
